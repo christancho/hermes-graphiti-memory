@@ -1,0 +1,12 @@
+[project]
+name = "hermes-graphiti-memory"
+version = "0.1.0"
+description = "Hermes Agent memory provider plugin: self-hosted Graphiti knowledge graph via its MCP server"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Christian Mendieta" }]
+# Standard library only.
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/christancho/hermes-graphiti-memory"
