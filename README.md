@@ -37,7 +37,11 @@ hermes memory status         # Provider: graphiti, Status: available ✓
 
 Per profile: `hermes -p <profile> memory setup`. Restart the gateway (or start a new session) to activate it.
 
-If you already added the same server under `mcp_servers:`, disable that entry. Otherwise the model sees two sets of memory tools.
+If you already added the same server under `mcp_servers:`, remove that entry (`hermes mcp remove <name>`). Otherwise the model sees two sets of memory tools.
+
+> **Don't name an MCP server `memory`.** That name collides with Hermes's built-in `memory` toolset. If the server is disabled, Hermes drops the whole `memory` toolset, which removes the built-in memory tool **and** this provider's tools (the log says `the 'memory' toolset is gated off`). Remove the entry, or name it e.g. `graphiti`.
+
+Session capture runs when a session really ends for Hermes, not when a client disconnects. For gateway-hosted chats (Desktop, TUI, messaging) that happens when the session closes or is evicted, reset or compressed.
 
 ## Configuration
 
