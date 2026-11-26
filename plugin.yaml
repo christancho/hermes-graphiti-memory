@@ -1,5 +1,7 @@
 name: graphiti
-version: 0.1.0
+version: 0.1.1
 description: "Long-term memory in a self-hosted Graphiti knowledge graph, through its MCP server. Recall before each turn, one episode per session, mirrors built-in memory writes. The database and extraction key stay on your server."
 author: christancho
+requires_hermes: ">=0.23.4"
+requires_env: []
 pip_dependencies: []

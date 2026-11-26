@@ -1,6 +1,6 @@
 [project]
 name = "hermes-graphiti-memory"
-version = "0.1.0"
+version = "0.1.1"
 description = "Hermes Agent memory provider plugin: self-hosted Graphiti knowledge graph via its MCP server"
 requires-python = ">=3.11"
 license = { text = "MIT" }

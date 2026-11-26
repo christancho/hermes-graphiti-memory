@@ -22,12 +22,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from agent.memory_provider import MemoryProvider, RecallStatus, is_trivial_prompt, spawn_context_thread
-
-try:  # agent.secret_scope resolves profile-scoped secrets; fall back to the environment
-    from agent.secret_scope import get_secret
-except Exception:  # pragma: no cover - very old Hermes
-    def get_secret(name: str, default: Optional[str] = None) -> Optional[str]:
-        return os.environ.get(name, default)
+from agent.secret_scope import get_secret  # profile-scoped secrets (never read os.environ directly)
 
 from .mcp_client import GraphitiMCPClient, MCPError
 

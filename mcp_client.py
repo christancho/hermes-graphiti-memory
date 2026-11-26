@@ -21,7 +21,7 @@ class MCPError(RuntimeError):
 class GraphitiMCPClient:
     def __init__(self, url: str, *, token: str = "", timeout: float = 30.0,
                  use_env_proxy: bool = True, client_name: str = "hermes-graphiti-memory",
-                 client_version: str = "0.1.0"):
+                 client_version: str = "0.1.1"):
         self.url = url.rstrip("/")  # Graphiti answers /mcp; /mcp/ 307-redirects to plain http
         self.token = token
         self.timeout = timeout

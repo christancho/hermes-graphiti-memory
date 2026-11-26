@@ -24,7 +24,7 @@ Each Hermes profile gets its own Graphiti group, named after the profile (the `d
 
 ## Requirements
 
-- Hermes Agent with memory-provider plugins (any 2026.x release).
+- Hermes Agent 0.23.4 or newer (declared as `requires_hermes` in `plugin.yaml`).
 - A Graphiti MCP server reachable over Streamable HTTP, e.g. `mcp_server/docker/docker-compose-falkordb.yml` from the Graphiti repo. Use an image that persists data (FalkorDB with `appendonly yes`): see [getzep/graphiti#2117](https://github.com/getzep/graphiti/issues/2117).
 
 ## Install
@@ -77,6 +77,8 @@ Session capture runs when a session really ends for Hermes, not when a client di
 Secrets: `GRAPHITI_MCP_TOKEN` (optional), sent as `Authorization: Bearer …`, goes in `$HERMES_HOME/.env`. Graphiti's MCP server has no authentication of its own, so put a reverse proxy that checks a token (or an identity-aware proxy) in front of it if it's reachable by anything other than your agents.
 
 ## Privacy and cost
+
+**Disclosure.** The plugin talks only to the Graphiti MCP server URL you configure (and through `HTTPS_PROXY` if `use_env_proxy` is on). It runs short-lived background threads for recall and writes; nothing keeps running after a session ends. It reads only its own `$HERMES_HOME/graphiti.json`; the optional bearer token is read through Hermes's secret route (`GRAPHITI_MCP_TOKEN`), never from a file. It runs no shell commands, stores no credentials and sends no telemetry.
 
 - **What leaves Hermes:** user and assistant text from captured sessions, `graphiti_remember` content and mirrored built-in memory entries. Tool calls and tool output are never sent. Hermes masks recognizable secrets before handing anything to a memory provider.
 - **What leaves your server:** Graphiti sends every episode to its configured LLM and embedding provider for extraction. Use a local model (e.g. via an OpenAI-compatible endpoint) if memories must not leave your network.
