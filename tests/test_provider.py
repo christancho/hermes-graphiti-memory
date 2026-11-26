@@ -64,6 +64,53 @@ class ClientTests(unittest.TestCase):
         with self.assertRaises(MCPError):
             GraphitiMCPClient("http://127.0.0.1:9/mcp", timeout=1, use_env_proxy=False).status()
 
+    def test_cross_origin_redirect_is_refused_and_token_not_forwarded(self):
+        import threading
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+        seen = []
+
+        class Catcher(BaseHTTPRequestHandler):  # the "other host" a hostile server redirects to
+            def log_message(self, *a):
+                pass
+
+            def _any(self):
+                seen.append(dict(self.headers))
+                self.send_response(200)
+                self.end_headers()
+            do_GET = do_POST = _any
+
+        catcher = ThreadingHTTPServer(("127.0.0.1", 0), Catcher)
+        threading.Thread(target=catcher.serve_forever, daemon=True).start()
+        target = f"http://127.0.0.1:{catcher.server_address[1]}/steal"
+
+        class Redirector(BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def do_POST(self):
+                self.rfile.read(int(self.headers.get("Content-Length") or 0))
+                self.send_response(302)  # 302 is followed for POST by default urllib (as GET)
+                self.send_header("Location", target)
+                self.end_headers()
+
+        redirector = ThreadingHTTPServer(("127.0.0.1", 0), Redirector)
+        threading.Thread(target=redirector.serve_forever, daemon=True).start()
+        try:
+            c = GraphitiMCPClient(f"http://127.0.0.1:{redirector.server_address[1]}/mcp", token="s3cret",
+                                  timeout=3, use_env_proxy=False)
+            with self.assertRaises(MCPError):
+                c.status()
+            self.assertEqual(seen, [])  # nothing reached the other origin, so no token either
+        finally:
+            catcher.shutdown()
+            redirector.shutdown()
+
+    def test_origin_comparison(self):
+        from graphiti_plugin_under_test.mcp_client import SameOriginRedirectHandler, _origin
+        self.assertEqual(_origin("https://Memory.Example.com/mcp"), ("https", "memory.example.com", 443))
+        self.assertNotEqual(_origin("https://a.example.com/mcp"), _origin("http://a.example.com/mcp"))
+        self.assertTrue(issubclass(SameOriginRedirectHandler, __import__("urllib.request").request.HTTPRedirectHandler))
+
 
 class ProviderTests(unittest.TestCase):
     def setUp(self):
@@ -71,7 +118,8 @@ class ProviderTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.home = Path(self.tmp.name) / "profiles" / "devops"
         self.home.mkdir(parents=True)
-        (self.home / "graphiti.json").write_text(json.dumps({"url": self.fake.url, "use_env_proxy": False}))
+        (self.home / "graphiti.json").write_text(json.dumps({"url": self.fake.url, "use_env_proxy": False,
+                                                             "shared_groups": ["main"]}))  # opt-in sharing
         self.p = plugin.GraphitiMemoryProvider()
         self.p.initialize("sess-1", hermes_home=str(self.home), platform="cli", agent_context="primary")
 
@@ -172,6 +220,33 @@ class ProviderTests(unittest.TestCase):
         self.assertEqual(data["capture"], "off")
         self.assertNotIn("token", data)  # secrets go to .env, never the json
         self.assertEqual(data["url"], self.fake.url)
+
+
+class DefaultIsolationTests(unittest.TestCase):
+    """Out of the box, nothing is shared between profiles."""
+
+    def test_defaults_keep_profiles_separate(self):
+        self.assertEqual(plugin.DEFAULTS["shared_groups"], [])
+        fake = FakeGraphiti()
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp) / "profiles" / "investor"
+            home.mkdir(parents=True)
+            (home / "graphiti.json").write_text(json.dumps({"url": fake.url, "use_env_proxy": False}))
+            p = plugin.GraphitiMemoryProvider()
+            p.initialize("s", hermes_home=str(home), agent_context="primary")
+            try:
+                self.assertEqual(p._groups(), ["investor"])
+                self.assertIn("private to this profile", p.system_prompt_block())
+                p.on_memory_write("add", "user", "Chris prefers short replies")  # USER.md mirror
+                out = json.loads(p.handle_tool_call("graphiti_remember", {"content": "x is y", "shared": True}))
+                self.assertEqual(out["group"], "investor")
+                out = json.loads(p.handle_tool_call("graphiti_search", {"query": "short replies", "scope": "shared"}))
+                self.assertEqual(out["groups"], ["investor"])
+                self.assertTrue(wait_for(lambda: len(fake.episodes) == 2))
+                self.assertEqual({e["group_id"] for e in fake.episodes}, {"investor"})
+            finally:
+                p.shutdown()
+                fake.close()
 
 
 @unittest.skipUnless(hermes_available(), "Hermes Agent not installed")

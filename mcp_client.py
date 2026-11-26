@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import threading
 import urllib.error
+import urllib.parse
 import urllib.request
 from typing import Any, Optional
 
@@ -18,15 +19,40 @@ class MCPError(RuntimeError):
     """Transport, protocol or tool error from the MCP server."""
 
 
+def _origin(url: str) -> tuple[str, str, int]:
+    p = urllib.parse.urlsplit(url)
+    scheme = (p.scheme or "").lower()
+    return scheme, (p.hostname or "").lower(), p.port or (443 if scheme == "https" else 80)
+
+
+class SameOriginRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Follow a redirect only within the same scheme, host and port.
+
+    urllib's default handler follows cross-host redirects and copies every request header,
+    including ``Authorization``, to the new host. A misconfigured or compromised server could
+    then send the bearer token anywhere (or downgrade https to http). Anything that leaves the
+    original origin is refused and surfaces as an HTTPError instead.
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if _origin(newurl) != _origin(req.full_url):
+            raise urllib.error.HTTPError(
+                req.full_url, code, f"refused cross-origin redirect to {_origin(newurl)[1] or newurl}",
+                headers, fp)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
 class GraphitiMCPClient:
     def __init__(self, url: str, *, token: str = "", timeout: float = 30.0,
                  use_env_proxy: bool = True, client_name: str = "hermes-graphiti-memory",
-                 client_version: str = "0.1.1"):
+                 client_version: str = "0.1.2"):
         self.url = url.rstrip("/")  # Graphiti answers /mcp; /mcp/ 307-redirects to plain http
         self.token = token
         self.timeout = timeout
         self._client_info = {"name": client_name, "version": client_version}
-        handlers = [] if use_env_proxy else [urllib.request.ProxyHandler({})]
+        handlers: list = [SameOriginRedirectHandler()]
+        if not use_env_proxy:
+            handlers.append(urllib.request.ProxyHandler({}))
         self._opener = urllib.request.build_opener(*handlers)
         self._session_id: Optional[str] = None
         self._lock = threading.Lock()  # one in-flight session handshake at a time

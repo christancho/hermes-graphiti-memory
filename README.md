@@ -15,12 +15,14 @@ Hermes profile ──HTTP (MCP)──▶ Graphiti MCP server ──▶ FalkorDB 
 |---|---|
 | **Recall** (before each turn) | Searches the profile's group plus shared groups for facts related to your message and injects the top results. Time-boxed (default 2 s) and skipped for trivial prompts ("ok", "thanks", slash commands). |
 | **Capture** (default: end of session) | Saves one episode per session: user and assistant text only, never tool output. Long sessions also save the part that is about to be compressed. Sessions with fewer than 2 user turns, subagents and cron runs are skipped. |
-| **Mirror** | Writes to Hermes's built-in memory (`MEMORY.md` / `USER.md`) are copied into the graph: `user` entries go to the first shared group, `memory` entries to the profile's group. |
+| **Mirror** | Writes to Hermes's built-in memory (`MEMORY.md` / `USER.md`) are copied into the profile's group (`USER.md` entries go to the first shared group only if you configured one). |
 | **Tools** | `graphiti_search` (facts or entities, scope own / shared / all) and `graphiti_remember`. There are **no delete tools**, so a model can't wipe memory. |
 
 ### Groups
 
-Each Hermes profile gets its own Graphiti group, named after the profile (the `default` profile maps to `hermes`). Every profile also **reads** the shared groups (default `main`) and writes to them only on purpose (`graphiti_remember` with `shared: true`, or a mirrored `USER.md` entry). That gives several bots one common memory of you plus their own working knowledge.
+Each Hermes profile gets its own Graphiti group, named after the profile (the `default` profile maps to `hermes`). **By default profiles are kept separate**, as Hermes keeps them: a profile only reads and writes its own group.
+
+Sharing is opt-in. Set `shared_groups` (e.g. `["main"]`) in each profile that should take part: those profiles then also **read** the shared groups, and write to them only on purpose (`graphiti_remember` with `shared: true`, or a mirrored `USER.md` entry). That gives several bots one common memory of you plus their own working knowledge. Anything in a shared group is readable by every profile that lists it.
 
 ## Requirements
 
@@ -51,7 +53,7 @@ Session capture runs when a session really ends for Hermes, not when a client di
 {
   "url": "https://memory.example.com/mcp",
   "group_id": "",
-  "shared_groups": ["main"],
+  "shared_groups": [],
   "recall": true,
   "recall_max_facts": 8,
   "recall_budget_seconds": 2.0,
@@ -68,7 +70,7 @@ Session capture runs when a session really ends for Hermes, not when a client di
 |---|---|---|
 | `url` | — | Graphiti MCP endpoint. Use `/mcp` **without** a trailing slash: Graphiti redirects `/mcp/` to plain http. `GRAPHITI_MCP_URL` overrides it. |
 | `group_id` | profile name | This profile's group (`default` profile → `hermes`). |
-| `shared_groups` | `["main"]` | Groups every profile reads. |
+| `shared_groups` | `[]` | Opt-in groups shared by the profiles that list them (read by each; `USER.md` mirrors go to the first). Empty keeps the profile private. |
 | `capture` | `session_end` | `session_end`, `turn` (one episode per turn: more recall, more LLM cost), or `off`. |
 | `recall_budget_seconds` | `2.0` | Maximum time a turn waits for recall before going on without it. |
 | `mirror_builtin` | `true` | Copy built-in memory writes into the graph. |
@@ -78,7 +80,7 @@ Secrets: `GRAPHITI_MCP_TOKEN` (optional), sent as `Authorization: Bearer …`, g
 
 ## Privacy and cost
 
-**Disclosure.** The plugin talks only to the Graphiti MCP server URL you configure (and through `HTTPS_PROXY` if `use_env_proxy` is on). It runs short-lived background threads for recall and writes; nothing keeps running after a session ends. It reads only its own `$HERMES_HOME/graphiti.json`; the optional bearer token is read through Hermes's secret route (`GRAPHITI_MCP_TOKEN`), never from a file. It runs no shell commands, stores no credentials and sends no telemetry.
+**Disclosure.** The plugin talks only to the Graphiti MCP server URL you configure (and through `HTTPS_PROXY` if `use_env_proxy` is on). It runs short-lived background threads for recall and writes; nothing keeps running after a session ends. Redirects are followed only within the configured server's scheme, host and port, so the token is never sent to another host or over plain http. It reads only its own `$HERMES_HOME/graphiti.json`; the optional bearer token is read through Hermes's secret route (`GRAPHITI_MCP_TOKEN`), never from a file. It runs no shell commands, stores no credentials and sends no telemetry.
 
 - **What leaves Hermes:** user and assistant text from captured sessions, `graphiti_remember` content and mirrored built-in memory entries. Tool calls and tool output are never sent. Hermes masks recognizable secrets before handing anything to a memory provider.
 - **What leaves your server:** Graphiti sends every episode to its configured LLM and embedding provider for extraction. Use a local model (e.g. via an OpenAI-compatible endpoint) if memories must not leave your network.

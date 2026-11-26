@@ -36,7 +36,7 @@ CAPTURE_MODES = ("session_end", "turn", "off")
 DEFAULTS: dict[str, Any] = {
     "url": "",                 # e.g. https://memory.example.com/mcp
     "group_id": "",            # "" -> derived from the profile name
-    "shared_groups": ["main"], # read by every profile; written only on purpose
+    "shared_groups": [],       # opt-in: groups every profile reads (e.g. ["main"]); empty = profiles stay separate
     "recall": True,
     "recall_max_facts": 8,
     "recall_budget_seconds": 2.0,
@@ -174,9 +174,11 @@ class GraphitiMemoryProvider(MemoryProvider):
         return [self._group] + [g for g in self._cfg["shared_groups"] if g != self._group]
 
     def system_prompt_block(self) -> str:
-        shared = ", ".join(g for g in self._cfg["shared_groups"] if g != self._group) or "none"
+        shared = [g for g in self._cfg["shared_groups"] if g != self._group]
+        scope = (f"Shared groups (also read by other profiles): {', '.join(shared)}." if shared
+                 else "Memory is private to this profile.")
         return ("# Long-term memory (Graphiti)\n"
-                f"Your group: `{self._group}`. Shared groups (read by every bot): {shared}.\n"
+                f"Your group: `{self._group}`. {scope}\n"
                 "Relevant facts are recalled automatically before each turn. Use `graphiti_search` for "
                 "more, and `graphiti_remember` for durable facts, decisions, preferences and root causes. "
                 "Never store secrets, tokens or credentials.")
@@ -315,7 +317,8 @@ class GraphitiMemoryProvider(MemoryProvider):
                  "content": {"type": "string"},
                  "name": {"type": "string", "description": "Short title for the episode."},
                  "shared": {"type": "boolean", "default": False,
-                            "description": "Write to the first shared group (facts every bot needs)."}},
+                            "description": "Write to the first shared group, if one is configured "
+                                           "(otherwise the profile's own group)."}},
                  "required": ["content"]}},
         ]
 
@@ -360,7 +363,9 @@ class GraphitiMemoryProvider(MemoryProvider):
              "required": True},
             {"key": "group_id", "description": "This profile's group ('' = profile name, default profile -> hermes)",
              "default": ""},
-            {"key": "shared_groups", "description": "Comma-separated groups every profile reads", "default": "main"},
+            {"key": "shared_groups", "description": "Optional comma-separated groups shared by several profiles "
+                                                    "(read by each; USER.md mirrors go to the first). Empty keeps "
+                                                    "profiles separate", "default": ""},
             {"key": "capture", "description": "What to store automatically", "default": "session_end",
              "choices": list(CAPTURE_MODES)},
             {"key": "token", "description": "Bearer token if your proxy requires one (optional)", "secret": True,
